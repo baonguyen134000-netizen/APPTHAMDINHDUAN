@@ -14,16 +14,17 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 ỨNG DỤNG THẨM ĐỊNH DỰ ÁN ĐẦU TƯ")
+st.title("📊 THẨM ĐỊNH HIỆU QUẢ TÀI CHÍNH DỰ ÁN")
 st.caption(
-    "Phân tích hiệu quả tài chính dự án bằng 6 chỉ tiêu: "
-    "NPV, IRR, MIRR, PI, PP và DPP."
+    "Tính toán NPV, IRR, MIRR, PI, PP và DPP. "
+    "Đơn vị tiền tệ: triệu đồng."
 )
 
 st.info(
-    "Nhập dòng tiền theo cùng một đơn vị tiền tệ. "
-    "Vốn đầu tư ban đầu nhập số dương; dòng tiền thu vào nhập số dương "
-    "và dòng tiền chi ra nhập số âm."
+    "Nhập vốn đầu tư năm 0 dưới dạng số dương. "
+    "Dòng tiền thu vào nhập số dương; dòng tiền chi ra nhập số âm. "
+    "Lãi suất chiết khấu được sử dụng để tính NPV, PI, DPP "
+    "và làm lãi suất tài trợ, tái đầu tư khi tính MIRR."
 )
 
 
@@ -31,14 +32,14 @@ st.info(
 # 2. CÁC HÀM TÍNH TOÁN
 # =====================================================
 def tinh_npv(dong_tien, lai_suat):
-    """NPV với dòng tiền năm 0 ở vị trí đầu tiên."""
     return float(npf.npv(lai_suat, dong_tien))
 
 
 def tinh_irr(dong_tien):
-    """Tính IRR; trả về None nếu không tính được."""
-    if not (any(x < 0 for x in dong_tien)
-            and any(x > 0 for x in dong_tien)):
+    if not (
+        any(x < 0 for x in dong_tien)
+        and any(x > 0 for x in dong_tien)
+    ):
         return None
 
     try:
@@ -48,18 +49,23 @@ def tinh_irr(dong_tien):
         return None
 
 
-def tinh_mirr(dong_tien, lai_suat_von, lai_suat_tai_dau_tu):
-    """Tính MIRR theo lãi suất tài trợ và tái đầu tư."""
-    if not (any(x < 0 for x in dong_tien)
-            and any(x > 0 for x in dong_tien)):
+def tinh_mirr(dong_tien, lai_suat):
+    """
+    MIRR sử dụng cùng một lãi suất cho tài trợ
+    và tái đầu tư theo yêu cầu của người dùng.
+    """
+    if not (
+        any(x < 0 for x in dong_tien)
+        and any(x > 0 for x in dong_tien)
+    ):
         return None
 
     try:
         ket_qua = float(
             npf.mirr(
                 dong_tien,
-                finance_rate=lai_suat_von,
-                reinvest_rate=lai_suat_tai_dau_tu
+                finance_rate=lai_suat,
+                reinvest_rate=lai_suat
             )
         )
         return ket_qua if np.isfinite(ket_qua) else None
@@ -69,8 +75,8 @@ def tinh_mirr(dong_tien, lai_suat_von, lai_suat_tai_dau_tu):
 
 def tinh_pi(dong_tien, lai_suat):
     """
-    PI = PV dòng tiền dương / PV trị tuyệt đối dòng tiền âm.
-    Bao gồm vốn đầu tư ban đầu và các khoản chi âm ở các năm sau.
+    PI = PV các dòng tiền dương / PV trị tuyệt đối
+    của tất cả dòng tiền âm, bao gồm năm 0.
     """
     pv_duong = 0.0
     pv_am = 0.0
@@ -89,11 +95,11 @@ def tinh_pi(dong_tien, lai_suat):
     return pv_duong / pv_am
 
 
-def tinh_thoi_gian_hoan_von(dong_tien, lai_suat=None):
+def tinh_hoan_von(dong_tien, lai_suat=None):
     """
-    PP nếu lai_suat=None.
-    DPP nếu có lai_suat.
-    Nội suy trong năm giả định dòng tiền phát sinh đều trong năm.
+    PP: hoàn vốn không chiết khấu.
+    DPP: hoàn vốn có chiết khấu.
+    Nội suy trong năm giả định dòng tiền phát sinh đều.
     """
     if len(dong_tien) < 2 or dong_tien[0] >= 0:
         return None
@@ -113,194 +119,225 @@ def tinh_thoi_gian_hoan_von(dong_tien, lai_suat=None):
             if cf <= 0:
                 return float(nam)
 
-            phan_nam = max(0.0, min(1.0, -truoc_do / cf))
-            return (nam - 1) + phan_nam
+            phan_nam = max(
+                0.0,
+                min(1.0, -truoc_do / cf)
+            )
+            return nam - 1 + phan_nam
 
     return None
 
 
-def dinh_dang_tien(gia_tri):
-    return f"{gia_tri:,.2f}"
+def dinh_dang_tien(x):
+    return f"{x:,.2f}"
 
 
-def dinh_dang_ty_le(gia_tri):
-    if gia_tri is None or not np.isfinite(gia_tri):
+def dinh_dang_ty_le(x):
+    if x is None or not np.isfinite(x):
         return "Không xác định"
-    return f"{gia_tri * 100:.2f}%"
+    return f"{x * 100:.2f}%"
 
 
-def dinh_dang_nam(gia_tri):
-    if gia_tri is None:
+def dinh_dang_hoan_von(x):
+    if x is None:
         return "Không hoàn vốn trong thời gian dự án"
-    return f"{gia_tri:.2f} năm"
+    return f"{x:.2f} năm"
+
+
+def tao_excel(bang_chi_tieu, bang_dong_tien):
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        bang_chi_tieu.to_excel(
+            writer,
+            sheet_name="Ket_qua_tham_dinh",
+            index=False
+        )
+
+        bang_dong_tien.to_excel(
+            writer,
+            sheet_name="Phan_tich_dong_tien",
+            index=False
+        )
+
+        for sheet in writer.sheets.values():
+            sheet.freeze_panes = "A2"
+            sheet.auto_filter.ref = sheet.dimensions
+
+            for cells in sheet.columns:
+                max_length = max(
+                    len(str(cell.value))
+                    if cell.value is not None else 0
+                    for cell in cells
+                )
+                sheet.column_dimensions[
+                    cells[0].column_letter
+                ].width = min(max_length + 3, 35)
+
+    output.seek(0)
+    return output.getvalue()
 
 
 # =====================================================
 # 3. NHẬP THÔNG SỐ DỰ ÁN
 # =====================================================
-st.header("1. Thông số đầu tư")
+st.header("1. Nhập thông số đầu tư")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     von_dau_tu = st.number_input(
-        "Vốn đầu tư ban đầu",
+        "Vốn đầu tư ban đầu tại năm 0 (triệu đồng)",
         min_value=0.01,
         value=1000.0,
         step=100.0,
-        help="Nhập số dương. Dòng tiền năm 0 sẽ được ghi nhận là số âm."
+        format="%.2f"
     )
 
 with col2:
     so_nam = st.number_input(
-        "Thời gian dự án (năm)",
+        "Số năm đầu tư",
         min_value=1,
         max_value=50,
         value=5,
         step=1
     )
 
-with col3:
-    lai_suat_chiet_khau = st.number_input(
-        "Lãi suất chiết khấu (%)",
-        min_value=0.0,
-        max_value=500.0,
-        value=20.0,
-        step=1.0
-    )
-
-col4, col5 = st.columns(2)
-
-with col4:
-    lai_suat_von = st.number_input(
-        "Lãi suất tài trợ vốn (%) - MIRR",
-        min_value=0.0,
-        max_value=500.0,
-        value=12.0,
-        step=1.0
-    )
-
-with col5:
-    lai_suat_tai_dau_tu = st.number_input(
-        "Lãi suất tái đầu tư (%) - MIRR",
-        min_value=0.0,
-        max_value=500.0,
-        value=10.0,
-        step=1.0
-    )
-
-r = lai_suat_chiet_khau / 100
-finance_rate = lai_suat_von / 100
-reinvest_rate = lai_suat_tai_dau_tu / 100
-
-
-# =====================================================
-# 4. NHẬP DÒNG TIỀN THEO NĂM
-# =====================================================
-st.header("2. Nhập dòng tiền dự án")
-
-st.write(
-    "Bạn có thể sửa trực tiếp dòng tiền thuần từng năm. "
-    "Năm 0 là vốn đầu tư ban đầu; các năm 1 đến N là dòng tiền "
-    "phát sinh trong quá trình hoạt động."
+lai_suat_pct = st.number_input(
+    "Lãi suất chiết khấu (%)",
+    min_value=0.0,
+    max_value=500.0,
+    value=20.0,
+    step=1.0,
+    format="%.2f"
 )
 
-dong_tien_mac_dinh = {
-    1: -200.0,
-    2: -100.0,
-    3: 300.0,
-    4: 800.0,
-    5: 1200.0
-}
+r = lai_suat_pct / 100
 
-du_lieu = []
+st.caption(
+    f"Vốn đầu tư năm 0: {dinh_dang_tien(von_dau_tu)} triệu đồng | "
+    f"Lãi suất chiết khấu: {lai_suat_pct:.2f}%"
+)
 
-for nam in range(1, int(so_nam) + 1):
-    du_lieu.append({
-        "Năm": nam,
-        "Dòng tiền thuần": dong_tien_mac_dinh.get(nam, 0.0)
-    })
 
-df_dong_tien = pd.DataFrame(du_lieu)
+# =====================================================
+# 4. NHẬP DÒNG TIỀN
+# =====================================================
+st.header("2. Nhập dòng tiền theo từng năm")
+
+st.write(
+    "Bảng dưới đây gồm dòng tiền năm 0 và các năm tiếp theo. "
+    "Bạn có thể điều chỉnh dòng tiền trực tiếp trên bảng."
+)
+
+df_dong_tien = pd.DataFrame({
+    "Năm": list(range(int(so_nam) + 1)),
+    "Dòng tiền (triệu đồng)": [
+        -float(von_dau_tu)
+    ] + [
+        0.0
+    ] * int(so_nam)
+})
+
+# Giá trị mặc định minh họa cho dự án 5 năm
+if int(so_nam) == 5:
+    df_dong_tien["Dòng tiền (triệu đồng)"] = [
+        -float(von_dau_tu),
+        -200.0,
+        -100.0,
+        300.0,
+        800.0,
+        1200.0
+    ]
+
+df_dong_tien["Năm"] = df_dong_tien["Năm"].astype(int)
 
 df_da_sua = st.data_editor(
     df_dong_tien,
-    hide_index=True,
     use_container_width=True,
+    hide_index=True,
     num_rows="fixed",
+    key="bang_dong_tien_du_an",
     disabled=["Năm"],
     column_config={
         "Năm": st.column_config.NumberColumn(
-            "Năm", format="%d"
+            "Năm",
+            format="%d"
         ),
-        "Dòng tiền thuần": st.column_config.NumberColumn(
-            "Dòng tiền thuần",
-            help="Số dương là dòng tiền vào; số âm là dòng tiền ra.",
+        "Dòng tiền (triệu đồng)": st.column_config.NumberColumn(
+            "Dòng tiền (triệu đồng)",
+            min_value=-1_000_000_000_000.0,
+            max_value=1_000_000_000_000.0,
+            step=100.0,
             format="%.2f",
             required=True
         )
-    },
-    key="bang_dong_tien"
+    }
 )
+
+# Năm 0 phải bằng âm vốn đầu tư ban đầu
+dong_tien_nguoi_dung = (
+    df_da_sua["Dòng tiền (triệu đồng)"]
+    .astype(float)
+    .tolist()
+)
+
+dong_tien_nguoi_dung[0] = -float(von_dau_tu)
 
 st.caption(
-    "Ví dụ: dòng tiền -200 nghĩa là phát sinh khoản chi 200 "
-    "trong năm tương ứng."
+    "Năm 0 được tự động gán bằng âm vốn đầu tư ban đầu. "
+    "Các dòng tiền từ năm 1 trở đi có thể nhập số dương hoặc âm."
 )
 
 
 # =====================================================
-# 5. NÚT THỰC HIỆN PHÂN TÍCH
+# 5. TÍNH TOÁN
 # =====================================================
 if st.button(
-    "🧮 TÍNH TOÁN CÁC CHỈ TIÊU",
+    "🧮 TÍNH CÁC CHỈ TIÊU THẨM ĐỊNH",
     type="primary",
     use_container_width=True
 ):
-    if df_da_sua["Dòng tiền thuần"].isna().any():
-        st.error("Vui lòng nhập đầy đủ dòng tiền cho tất cả các năm.")
+    if df_da_sua["Dòng tiền (triệu đồng)"].isna().any():
+        st.error("Vui lòng nhập đầy đủ dòng tiền.")
         st.stop()
 
-    dong_tien_tuong_lai = (
-        df_da_sua["Dòng tiền thuần"].astype(float).tolist()
-    )
-
-    # Dòng tiền năm 0 là vốn đầu tư âm
-    dong_tien = [-float(von_dau_tu)] + dong_tien_tuong_lai
+    dong_tien = dong_tien_nguoi_dung
 
     npv = tinh_npv(dong_tien, r)
     irr = tinh_irr(dong_tien)
-    mirr = tinh_mirr(dong_tien, finance_rate, reinvest_rate)
+    mirr = tinh_mirr(dong_tien, r)
     pi = tinh_pi(dong_tien, r)
-    pp = tinh_thoi_gian_hoan_von(dong_tien)
-    dpp = tinh_thoi_gian_hoan_von(dong_tien, lai_suat=r)
+    pp = tinh_hoan_von(dong_tien)
+    dpp = tinh_hoan_von(dong_tien, lai_suat=r)
 
-    # Tạo bảng dòng tiền và giá trị hiện tại
-    bang_phan_tich = pd.DataFrame({
+    bang = pd.DataFrame({
         "Năm": list(range(int(so_nam) + 1)),
-        "Dòng tiền": dong_tien
+        "Dòng tiền (triệu đồng)": dong_tien
     })
 
-    bang_phan_tich["Hệ số chiết khấu"] = [
+    bang["Hệ số chiết khấu"] = [
         1 / ((1 + r) ** nam)
         for nam in range(int(so_nam) + 1)
     ]
 
-    bang_phan_tich["Giá trị hiện tại"] = (
-        bang_phan_tich["Dòng tiền"]
-        * bang_phan_tich["Hệ số chiết khấu"]
+    bang["Giá trị hiện tại (triệu đồng)"] = (
+        bang["Dòng tiền (triệu đồng)"]
+        * bang["Hệ số chiết khấu"]
     )
 
-    bang_phan_tich["Dòng tiền tích lũy"] = (
-        bang_phan_tich["Dòng tiền"].cumsum()
+    bang["Dòng tiền tích lũy (triệu đồng)"] = (
+        bang["Dòng tiền (triệu đồng)"].cumsum()
     )
 
-    bang_phan_tich["Giá trị hiện tại tích lũy"] = (
-        bang_phan_tich["Giá trị hiện tại"].cumsum()
+    bang["Giá trị hiện tại tích lũy (triệu đồng)"] = (
+        bang["Giá trị hiện tại (triệu đồng)"].cumsum()
     )
 
-    # Lưu kết quả để không mất khi tải file
-    st.session_state["ket_qua_tham_dinh"] = {
+    ket_qua = {
+        "von_dau_tu": float(von_dau_tu),
+        "so_nam": int(so_nam),
+        "lai_suat_pct": float(lai_suat_pct),
         "dong_tien": dong_tien,
         "npv": npv,
         "irr": irr,
@@ -308,13 +345,10 @@ if st.button(
         "pi": pi,
         "pp": pp,
         "dpp": dpp,
-        "bang": bang_phan_tich,
-        "r": r,
-        "finance_rate": finance_rate,
-        "reinvest_rate": reinvest_rate,
-        "von_dau_tu": von_dau_tu,
-        "so_nam": int(so_nam)
+        "bang": bang
     }
+
+    st.session_state["ket_qua_tham_dinh"] = ket_qua
 
 
 # =====================================================
@@ -323,187 +357,171 @@ if st.button(
 if "ket_qua_tham_dinh" in st.session_state:
     kq = st.session_state["ket_qua_tham_dinh"]
 
-    # Nếu người dùng thay đổi thông số sau lần tính trước,
-    # yêu cầu tính lại để tránh hiển thị kết quả cũ.
+    # Không hiển thị kết quả cũ khi thông số vừa thay đổi
     thong_so_hien_tai = (
         float(von_dau_tu),
         int(so_nam),
-        float(r),
-        float(finance_rate),
-        float(reinvest_rate),
-        tuple(
-            df_da_sua["Dòng tiền thuần"].astype(float).tolist()
-        )
+        float(lai_suat_pct),
+        tuple(dong_tien_nguoi_dung)
     )
 
     thong_so_da_tinh = (
-        float(kq["von_dau_tu"]),
-        int(kq["so_nam"]),
-        float(kq["r"]),
-        float(kq["finance_rate"]),
-        float(kq["reinvest_rate"]),
-        tuple(kq["dong_tien"][1:])
+        kq["von_dau_tu"],
+        kq["so_nam"],
+        kq["lai_suat_pct"],
+        tuple(kq["dong_tien"])
     )
 
     if thong_so_hien_tai != thong_so_da_tinh:
         st.warning(
-            "Thông số hoặc dòng tiền đã thay đổi. "
-            "Nhấn 'TÍNH TOÁN CÁC CHỈ TIÊU' để cập nhật kết quả."
+            "Bạn đã thay đổi thông số hoặc dòng tiền. "
+            "Hãy nhấn nút tính toán để cập nhật kết quả."
         )
     else:
         st.divider()
-        st.header("3. Kết quả thẩm định dự án")
+        st.header("3. Kết quả thẩm định")
 
         c1, c2, c3 = st.columns(3)
 
-        with c1:
-            st.metric(
-                "NPV",
-                dinh_dang_tien(kq["npv"])
-            )
-
-        with c2:
-            st.metric(
-                "IRR",
-                dinh_dang_ty_le(kq["irr"])
-            )
-
-        with c3:
-            st.metric(
-                "MIRR",
-                dinh_dang_ty_le(kq["mirr"])
-            )
+        c1.metric(
+            "NPV (triệu đồng)",
+            dinh_dang_tien(kq["npv"])
+        )
+        c2.metric(
+            "IRR",
+            dinh_dang_ty_le(kq["irr"])
+        )
+        c3.metric(
+            "MIRR",
+            dinh_dang_ty_le(kq["mirr"])
+        )
 
         c4, c5, c6 = st.columns(3)
 
-        with c4:
-            st.metric(
-                "PI",
-                f"{kq['pi']:.4f}" if kq["pi"] is not None
-                else "Không xác định"
-            )
-
-        with c5:
-            st.metric(
-                "PP",
-                dinh_dang_nam(kq["pp"])
-            )
-
-        with c6:
-            st.metric(
-                "DPP",
-                dinh_dang_nam(kq["dpp"])
-            )
+        c4.metric(
+            "PI",
+            f"{kq['pi']:.4f}"
+            if kq["pi"] is not None
+            else "Không xác định"
+        )
+        c5.metric(
+            "PP",
+            dinh_dang_hoan_von(kq["pp"])
+        )
+        c6.metric(
+            "DPP",
+            dinh_dang_hoan_von(kq["dpp"])
+        )
 
         # ---------------------------------------------
-        # 7. NHẬN XÉT THAM KHẢO
+        # NHẬN XÉT
         # ---------------------------------------------
-        st.header("4. Nhận xét kết quả")
+        st.header("4. Nhận xét tham khảo")
 
         if kq["npv"] > 0:
             st.success(
-                "NPV > 0: Dự án tạo ra giá trị hiện tại ròng dương "
-                "theo tỷ lệ chiết khấu đã chọn."
+                "NPV > 0: Dự án tạo giá trị hiện tại ròng dương "
+                "theo lãi suất chiết khấu đã chọn."
             )
         elif kq["npv"] < 0:
             st.warning(
-                "NPV < 0: Giá trị hiện tại của dòng tiền vào "
-                "chưa bù đắp dòng tiền ra theo tỷ lệ chiết khấu đã chọn."
+                "NPV < 0: Dự án chưa bù đắp được chi phí vốn "
+                "theo lãi suất chiết khấu đã chọn."
             )
         else:
             st.info(
-                "NPV = 0: Dự án hòa vốn theo tiêu chuẩn giá trị hiện tại ròng."
+                "NPV = 0: Dự án hòa vốn theo tiêu chuẩn NPV."
             )
 
         if kq["irr"] is not None:
-            if kq["irr"] > kq["r"]:
+            if kq["irr"] > r:
                 st.write(
-                    f"IRR ({kq['irr']:.2%}) cao hơn lãi suất chiết khấu "
-                    f"({kq['r']:.2%}). Với dòng tiền thông thường, "
-                    "đây là dấu hiệu thuận lợi."
+                    f"IRR ({kq['irr']:.2%}) lớn hơn lãi suất "
+                    f"chiết khấu ({r:.2%}). Với dòng tiền thông thường, "
+                    "đây là tín hiệu thuận lợi."
                 )
             else:
                 st.write(
-                    f"IRR ({kq['irr']:.2%}) không cao hơn lãi suất "
-                    f"chiết khấu ({kq['r']:.2%}). Cần xem xét kỹ hiệu quả dự án."
+                    f"IRR ({kq['irr']:.2%}) không vượt lãi suất "
+                    "chiết khấu. Cần xem xét thêm hiệu quả dự án."
                 )
         else:
             st.write(
-                "Không xác định được IRR duy nhất bằng phương pháp tính "
-                "của thư viện. Kiểm tra lại dấu và cấu trúc dòng tiền."
+                "IRR không xác định được bằng phép tính hiện tại. "
+                "Cần kiểm tra cấu trúc dòng tiền; dự án có thể không có "
+                "IRR thực hoặc có nhiều nghiệm."
             )
 
         if kq["mirr"] is not None:
             st.write(
-                f"MIRR = {kq['mirr']:.2%}; "
-                f"lãi suất tài trợ = {kq['finance_rate']:.2%}; "
-                f"lãi suất tái đầu tư = {kq['reinvest_rate']:.2%}."
+                f"MIRR = {kq['mirr']:.2%}, sử dụng lãi suất chiết khấu "
+                f"{r:.2%} làm lãi suất tài trợ và tái đầu tư."
             )
         else:
             st.write(
-                "Không tính được MIRR: cần có ít nhất một dòng tiền âm "
+                "MIRR không xác định: cần ít nhất một dòng tiền âm "
                 "và một dòng tiền dương."
             )
 
         if kq["pi"] is not None:
             if kq["pi"] > 1:
-                st.write(
-                    "PI > 1: Giá trị hiện tại của dòng tiền dương "
-                    "lớn hơn giá trị hiện tại của dòng tiền âm."
-                )
+                st.write("PI > 1: Giá trị hiện tại dòng tiền dương lớn hơn dòng tiền âm.")
             elif kq["pi"] < 1:
-                st.write(
-                    "PI < 1: Giá trị hiện tại của dòng tiền dương "
-                    "nhỏ hơn giá trị hiện tại của dòng tiền âm."
-                )
+                st.write("PI < 1: Giá trị hiện tại dòng tiền dương nhỏ hơn dòng tiền âm.")
             else:
-                st.write("PI = 1: Hai giá trị hiện tại bằng nhau.")
+                st.write("PI = 1: Giá trị hiện tại dòng tiền dương bằng dòng tiền âm.")
         else:
             st.write("Không xác định PI do không có dòng tiền âm.")
 
         # ---------------------------------------------
-        # 8. BẢNG PHÂN TÍCH DÒNG TIỀN
+        # BẢNG DÒNG TIỀN
         # ---------------------------------------------
         st.header("5. Bảng phân tích dòng tiền")
 
         st.dataframe(
             kq["bang"].style.format({
-                "Dòng tiền": "{:,.2f}",
+                "Dòng tiền (triệu đồng)": "{:,.2f}",
                 "Hệ số chiết khấu": "{:.4f}",
-                "Giá trị hiện tại": "{:,.2f}",
-                "Dòng tiền tích lũy": "{:,.2f}",
-                "Giá trị hiện tại tích lũy": "{:,.2f}"
+                "Giá trị hiện tại (triệu đồng)": "{:,.2f}",
+                "Dòng tiền tích lũy (triệu đồng)": "{:,.2f}",
+                "Giá trị hiện tại tích lũy (triệu đồng)": "{:,.2f}"
             }),
             use_container_width=True,
             hide_index=True
         )
 
         # ---------------------------------------------
-        # 9. BIỂU ĐỒ DÒNG TIỀN
+        # BIỂU ĐỒ
         # ---------------------------------------------
-        st.header("6. Biểu đồ dòng tiền dự án")
+        st.header("6. Biểu đồ dòng tiền")
 
-        bieu_do = kq["bang"].set_index("Năm")[
-            ["Dòng tiền", "Dòng tiền tích lũy"]
-        ]
+        st.bar_chart(
+            kq["bang"].set_index("Năm")[
+                ["Dòng tiền (triệu đồng)"]
+            ]
+        )
 
-        st.line_chart(bieu_do)
+        st.line_chart(
+            kq["bang"].set_index("Năm")[
+                [
+                    "Dòng tiền tích lũy (triệu đồng)",
+                    "Giá trị hiện tại tích lũy (triệu đồng)"
+                ]
+            ]
+        )
 
         # ---------------------------------------------
-        # 10. XUẤT EXCEL
+        # XUẤT EXCEL
         # ---------------------------------------------
         st.header("7. Xuất báo cáo Excel")
 
-        output = BytesIO()
-
         bang_chi_tieu = pd.DataFrame({
             "Chỉ tiêu": [
-                "Vốn đầu tư ban đầu",
-                "Thời gian dự án (năm)",
+                "Đơn vị tiền tệ",
+                "Vốn đầu tư ban đầu năm 0",
+                "Số năm đầu tư",
                 "Lãi suất chiết khấu",
-                "Lãi suất tài trợ vốn",
-                "Lãi suất tái đầu tư",
-                "NPV",
+                "NPV (triệu đồng)",
                 "IRR",
                 "MIRR",
                 "PI",
@@ -511,11 +529,10 @@ if "ket_qua_tham_dinh" in st.session_state:
                 "DPP (năm)"
             ],
             "Giá trị": [
+                "Triệu đồng",
                 kq["von_dau_tu"],
                 kq["so_nam"],
-                kq["r"],
-                kq["finance_rate"],
-                kq["reinvest_rate"],
+                kq["lai_suat_pct"] / 100,
                 kq["npv"],
                 kq["irr"],
                 kq["mirr"],
@@ -525,34 +542,14 @@ if "ket_qua_tham_dinh" in st.session_state:
             ]
         })
 
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            bang_chi_tieu.to_excel(
-                writer, sheet_name="Chi_tieu_tham_dinh", index=False
-            )
-
-            kq["bang"].to_excel(
-                writer, sheet_name="Dong_tien_du_an", index=False
-            )
-
-            for ten_sheet in writer.sheets:
-                ws = writer.sheets[ten_sheet]
-                ws.freeze_panes = "A2"
-                ws.auto_filter.ref = ws.dimensions
-
-                for cells in ws.columns:
-                    do_rong = max(
-                        len(str(cell.value)) if cell.value is not None else 0
-                        for cell in cells
-                    )
-                    ws.column_dimensions[
-                        cells[0].column_letter
-                    ].width = min(do_rong + 3, 35)
-
-        output.seek(0)
+        file_excel = tao_excel(
+            bang_chi_tieu,
+            kq["bang"]
+        )
 
         st.download_button(
-            label="📥 TẢI BÁO CÁO THẨM ĐỊNH (.xlsx)",
-            data=output.getvalue(),
+            label="📥 TẢI BÁO CÁO EXCEL (.xlsx)",
+            data=file_excel,
             file_name="bao_cao_tham_dinh_du_an.xlsx",
             mime=(
                 "application/vnd.openxmlformats-officedocument."
@@ -562,14 +559,13 @@ if "ket_qua_tham_dinh" in st.session_state:
         )
 
         st.caption(
-            "Lưu ý: PP và DPP sử dụng nội suy trong năm, giả định "
-            "dòng tiền phát sinh đều trong năm. Các chỉ tiêu là công cụ "
-            "hỗ trợ phân tích, không thay thế việc đánh giá rủi ro và "
-            "các giả định thực tế của dự án."
+            "PP và DPP được nội suy trong năm, giả định dòng tiền phát sinh "
+            "đều trong năm. PI được tính bằng PV dòng tiền dương chia cho "
+            "PV trị tuyệt đối tất cả dòng tiền âm."
         )
 
 else:
     st.info(
-        "Hãy nhập các thông số, chỉnh sửa dòng tiền và nhấn "
-        "'TÍNH TOÁN CÁC CHỈ TIÊU' để xem kết quả."
+        "Nhập vốn đầu tư năm 0, thời gian đầu tư, lãi suất chiết khấu "
+        "và dòng tiền từng năm, sau đó nhấn nút tính toán."
     )
